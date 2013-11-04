@@ -1,0 +1,3 @@
+/opt/foo	u:root:rwx,g:wheel:rwx,g:users:rx
+/opt/foo/bar	u:root:rwx,g:wheel:rx,g:users:0,o:0
+/opt/foo/info	nonrecursive,u:johndoe:rwx
