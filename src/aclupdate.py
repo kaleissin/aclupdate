@@ -25,19 +25,23 @@ class AclSet:
 		self.parse_rule_set(rule_set, path)
 
 	def parse_rule_set(self, rule_set, path):
+		is_parent = False
 		while path.rstrip(os.sep) and not self.reset:
 			if path in rule_set:
-				self.parse_rules(rule_set[path])
+				self.parse_rules(rule_set[path], is_parent)
+			is_parent = True
 			path = os.path.abspath(os.path.join(path, os.pardir))
 
-	def parse_rules(self, rules):
+	def parse_rules(self, rules, is_parent):
 		for rule in rules:
 			if rule.startswith('r:') or rule.startswith('reset:'):
 				self.reset = True
 			elif rule.startswith('l:'):
-				self.parse_rule(rule[2:], False)
+				if not is_parent:
+					self.parse_rule(rule[2:], False)
 			elif rule.startswith('local:'):
-				self.parse_rule(rule[6:], False)
+				if not is_parent:
+					self.parse_rule(rule[6:], False)
 			elif (rule.startswith('u:') or rule.startswith('user:')
 			or rule.startswith('g:') or rule.startswith('group:')
 			or rule.startswith('o:') or rule.startswith('other:')
