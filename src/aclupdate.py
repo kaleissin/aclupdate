@@ -1,71 +1,126 @@
 # -.- coding:utf-8 -.-
 import os
+import re
 import subprocess
 import sys
 
-def main():
+def add_default(x): return 'd:'+x
+
+class AclSet:
+	path = ''
+	add_acl = set()
+	rec_add_acl = set()
+	del_acl = set()
+	rec_del_acl = set()
+	reset = False
+
+	def __init__(self, rule_set, path):
+		self.add_acl = set()
+		self.rec_add_acl = set()
+		self.del_acl = set()
+		self.rec_del_acl = set()
+		self.reset = False
+
+		self.path = path
+		self.parse_rule_set(rule_set, path)
+
+	def parse_rule_set(self, rule_set, path):
+		while path.rstrip(os.sep) and not self.reset:
+			if path in rule_set:
+				self.parse_rules(rule_set[path])
+			path = os.path.abspath(os.path.join(path, os.pardir))
+
+	def parse_rules(self, rules):
+		for rule in rules:
+			if rule.startswith('r:') or rule.startswith('reset:'):
+				self.reset = True
+			elif rule.startswith('l:'):
+				self.parse_rule(rule[2:], False)
+			elif rule.startswith('local:'):
+				self.parse_rule(rule[6:], False)
+			elif (rule.startswith('u:') or rule.startswith('user:')
+			or rule.startswith('g:') or rule.startswith('group:')
+			or rule.startswith('o:') or rule.startswith('other:')
+			or rule.startswith('m:') or rule.startswith('mask:')):
+				self.parse_rule(rule, True)
+			else:
+				raise Exception('Unknown rule '+rule)
+
+	def parse_rule(self, rule, recursive):
+		if re.match('^(u(ser)?|g(roup)?|o(ther)?|m(ask)?):[a-z0-9-\\\\]*:([rwxX]+|[0-7]{1,3})$', rule):
+			if recursive:
+				self.rec_add_acl.add(rule)
+			else:
+				self.add_acl.add(rule)
+		elif re.match('^(u(ser)?|g(roup)?|o(ther)?|m(ask)?):[a-z0-9-\\\\]+:?$', rule):
+			if recursive:
+				self.rec_del_acl.add(rule)
+			else:
+				self.del_acl.add(rule)
+		else:
+			raise Exception('Unknown rule '+rule)
+
+	def cmd_recursive(self):
+		if self.rec_add_acl or self.rec_del_acl:
+			self.cmd(
+					'echo setfacl -R', 
+					self.rec_add_acl | set(map(add_default, self.rec_add_acl)),
+					self.rec_del_acl | set(map(add_default, self.rec_del_acl))
+				)
+		self.cmd('echo setfacl', self.add_acl, self.del_acl)
+
+	def cmd_local(self):
+		if self.add_acl or self.del_acl:
+			self.cmd(
+					'echo setfacl',
+					self.add_acl | self.rec_add_acl | set(map(add_default, self.rec_add_acl)),
+					self.del_acl | self.rec_del_acl | set(map(add_default, self.rec_del_acl))
+				)
+
+	def cmd(self, cmd_basis, add_acl, del_acl):
+		if add_acl or del_acl:
+			if self.reset:
+				cmd_basis += ' -b'
+			if add_acl:
+				cmd_basis += ' -m ' + ','.join(add_acl)
+			if del_acl:
+				cmd_basis += ' -x ' + ','.join(del_acl)
+			cmd_basis += ' ' + self.path
+			subprocess.call(cmd_basis, shell=True)
+
+def main(acl_rules):
 	"""
 	Read a list of ACLs from either a file or standard input
 	and modify the file system such that the ACLs are enforced.
 	"""
-	acls = parse()
-	queue = acls.keys()
+	queue = acl_rules.keys()
 	pointer = 0
 	while len(queue) > pointer:
 		path = queue[pointer]
-		acl = get_nearest_acl(acls, path)
-		
 		pointer += 1
-		children = []
-		recursive = reduce(
-				lambda recurs, str:
-					recurs and str != 'nonrecursive',
-				acl,
-				True
+		acls = AclSet(acl_rules, path)
+		
+		# TODO: Check if there is a conflict between a l: rule and another rule.
+		# If so, assume there is a child path and only apply the l: here 
+		has_child_path = reduce(
+				lambda has_child_path, path_:
+					has_child_path or path_.startswith(path+os.sep),
+				queue,
+				False
 			)
-		if not recursive:
-			execute_commands(path, acl, False)
+		if has_child_path:
+			child_paths = os.listdir(path)
+			child_paths = map(lambda x: os.path.join(path,x), child_paths)
+			queue.extend(filter(lambda path_: path_ not in queue, child_paths))
+			acls.cmd_local()
 		else:
-			has_child = reduce(
-					lambda has_child, pathname:
-						pathname.startswith(path+os.sep) and path != pathname or has_child,
-					queue,
-					False
-				)
-			if has_child:
-				recursive = False
-				acl.append('nonrecursive')
-				children = os.listdir(path)
-				children = map(lambda x: os.path.join(path,x), children)
-				queue.extend(filter(lambda x: x not in queue, children))
-			execute_commands(path, acl, recursive)
-
-def execute_commands(path, acl, recursive):
-	"""
-	Construct commands to apply the acl on path, and run them.
-	"""
-	if 'nonrecursive' in acl:
-		acl.remove('nonrecursive')
-	add_acl = ','.join(acl)
-	subprocess.call('setfacl '+path+' -'+ ('R' if recursive else '') + 'm '+add_acl, shell=True)
-
-def get_nearest_acl(acls, path):
-	"""
-	Get the ACL that matches the path best.
-	It does so by trying to get the path as-is from the acl list
-	and if that fails it will get the parent path.
-	"""
-	if path in acls:
-		return acls[path]
-	if not path or path == '/':
-		sys.exit('root path not defined (this may be a bug)')
-	return get_nearest_acl(acls, os.path.abspath(os.path.join(path, os.pardir)))
+			acls.cmd_recursive()
 
 def parse():
 	"""
 	Read ACLs from either a file or standard input and return them in a dictionary with path as key and acl array as value.
 	"""
-	acls = {}
+	rules = {}
 	if len(sys.argv) > 2:
 		sys.exit('Usage: '+sys.argv[0]+' [filename]')
 	if len(sys.argv) > 1:
@@ -74,7 +129,11 @@ def parse():
 		ruleList = sys.stdin
 	for rule in ruleList:
 		path, perms = rule.strip().split('\t')
-		acls[path.rstrip(os.sep)] = perms.split(',')
-	return acls
+		path = path.rstrip(os.sep)
+		if path in rules:
+			rules[path].extend(perms.split(','))
+		else:
+			rules[path] = perms.split(',')
+	return rules
 
-main()
+main(parse())
