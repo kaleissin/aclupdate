@@ -7,21 +7,14 @@ import sys
 def add_default(x): return 'd:'+x
 
 class AclSet:
-	path = ''
-	add_acl = set()
-	rec_add_acl = set()
-	del_acl = set()
-	rec_del_acl = set()
-	reset = False
-
 	def __init__(self, rule_set, path):
+		self.path = path
 		self.add_acl = set()
 		self.rec_add_acl = set()
 		self.del_acl = set()
 		self.rec_del_acl = set()
 		self.reset = False
 
-		self.path = path
 		self.parse_rule_set(rule_set, path)
 
 	def parse_rule_set(self, rule_set, path):
