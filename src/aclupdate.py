@@ -30,18 +30,20 @@ class AclSet:
 			category, body = rule.split(':', 1)
 			if category in ('r', 'reset'):
 				self.reset = True
-			elif category in ('l', 'local'):
+				return
+			if category in ('l', 'local'):
 				if not is_parent:
 					self.parse_rule(body, False)
-			elif category in (
+				return
+			if category in (
 				'u', 'user',
 				'g', 'group',
 				'o', 'other',
 				'm', 'mask',
 			):
 				self.parse_rule(rule, True)
-			else:
-				raise Exception('Unknown rule '+rule)
+				return
+		raise Exception('Unknown rule '+rule)
 
 	def parse_rule(self, rule, recursive):
 		if re.match('^(u(ser)?|g(roup)?|o(ther)?|m(ask)?):[a-z0-9-\\\\]*:([rwxX]+|[0-7]{1,3})$', rule):
