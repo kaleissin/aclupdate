@@ -27,18 +27,16 @@ class AclSet:
 
 	def parse_rules(self, rules, is_parent):
 		for rule in rules:
-			if rule.startswith('r:') or rule.startswith('reset:'):
+			category, body = rule.split(':', 1)
+			if category == 'r' or category == 'reset':
 				self.reset = True
-			elif rule.startswith('l:'):
+			elif category == 'l' or category == 'local':
 				if not is_parent:
-					self.parse_rule(rule[2:], False)
-			elif rule.startswith('local:'):
-				if not is_parent:
-					self.parse_rule(rule[6:], False)
-			elif (rule.startswith('u:') or rule.startswith('user:')
-			or rule.startswith('g:') or rule.startswith('group:')
-			or rule.startswith('o:') or rule.startswith('other:')
-			or rule.startswith('m:') or rule.startswith('mask:')):
+					self.parse_rule(body, False)
+			elif (category == 'u' or category == 'user'
+				or category == 'g' or category == 'group'
+				or category == 'o' or category == 'other'
+				or category == 'm' or category == 'mask'):
 				self.parse_rule(rule, True)
 			else:
 				raise Exception('Unknown rule '+rule)
