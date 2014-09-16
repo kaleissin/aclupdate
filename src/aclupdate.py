@@ -37,7 +37,7 @@ class AclSet:
 				'u', 'user',
 				'g', 'group',
 				'o', 'other',
-				'm', 'mask'
+				'm', 'mask',
 			):
 				self.parse_rule(rule, True)
 			else:
